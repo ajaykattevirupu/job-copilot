@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Credentials & secrets (NEVER commit these)
+profile.json
+resume.txt
+resume_name.txt
+.env
+
+# Browser profile (large, contains session cookies/tokens)
+browser_profile/
+
+# Output & generated files
+output/
+logs/
+*.log
+
+# Diagnosis / debug outputs
+diagnose_output.txt
+
+# Application tracker (local state)
+applications.json
+
+# OS
+.DS_Store
+Thumbs.db

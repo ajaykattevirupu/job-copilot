@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Copilot</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ── Topbar ─────────────────────────────────────────────── -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">Job Copilot</span>
+      </div>
+      <div class="topbar-mid">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Ready</span>
+      </div>
+      <div class="topbar-end">
+        <button class="btn-ghost" id="btn-tracker">Applications</button>
+        <button class="btn-ghost" id="btn-resumes">Resumes</button>
+        <button class="btn-ghost" id="btn-settings" title="Settings">⚙</button>
+        <button class="btn-stop" id="btn-stop" style="display:none">■ Stop</button>
+      </div>
+    </header>
+
+    <!-- ── Workspace ──────────────────────────────────────────── -->
+    <div class="workspace">
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sb-group">
+          <div class="sb-label">Platforms</div>
+          <label class="platform">
+            <input type="checkbox" id="pl-linkedin" checked>
+            <span class="pl-pip linkedin"></span>LinkedIn
+          </label>
+          <label class="platform">
+            <input type="checkbox" id="pl-indeed">
+            <span class="pl-pip indeed"></span>Indeed
+          </label>
+          <label class="platform">
+            <input type="checkbox" id="pl-dice">
+            <span class="pl-pip dice"></span>Dice
+          </label>
+          <label class="platform">
+            <input type="checkbox" id="pl-gmail">
+            <span class="pl-pip gmail"></span>Gmail Replies
+          </label>
+        </div>
+
+        <!-- ── Filters ──────────────────────────────────────── -->
+        <div class="sb-group">
+          <div class="sb-label">Filters</div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Sort</span>
+            <div class="chips" id="fc-sort" data-single="true">
+              <button class="chip active" data-val="DD">Recent</button>
+              <button class="chip"        data-val="R">Relevant</button>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Posted</span>
+            <div class="chips" id="fc-date" data-single="true">
+              <button class="chip" data-val="24h">24h</button>
+              <button class="chip active" data-val="week">Week</button>
+              <button class="chip" data-val="month">Month</button>
+              <button class="chip" data-val="any">Any</button>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Type</span>
+            <div class="chips" id="fc-jobtype">
+              <button class="chip" data-val="F">Full-time</button>
+              <button class="chip" data-val="C">Contract</button>
+              <button class="chip" data-val="P">Part-time</button>
+              <button class="chip" data-val="T">Temporary</button>
+              <button class="chip" data-val="I">Internship</button>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Mode</span>
+            <div class="chips" id="fc-mode">
+              <button class="chip active" data-val="2">Remote</button>
+              <button class="chip active" data-val="3">Hybrid</button>
+              <button class="chip" data-val="1">On-site</button>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Level</span>
+            <div class="chips" id="fc-level">
+              <button class="chip" data-val="2">Entry</button>
+              <button class="chip active" data-val="3">Assoc</button>
+              <button class="chip active" data-val="4">Mid</button>
+              <button class="chip" data-val="5">Senior</button>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-lbl">Easy Apply</span>
+            <label class="toggle">
+              <input type="checkbox" id="fc-easyapply">
+              <span class="tog-track"><span class="tog-thumb"></span></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="sb-group sb-stats">
+          <div class="sb-label">This Run</div>
+          <div class="stat">
+            <span class="stat-name">Applied</span>
+            <span class="stat-num green"  id="stat-applied">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-name">Skipped</span>
+            <span class="stat-num dim"    id="stat-skipped">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-name">Emails</span>
+            <span class="stat-num blue"   id="stat-emails">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-name">Pending</span>
+            <span class="stat-num yellow" id="stat-pending">0</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main -->
+      <main class="main">
+
+        <!-- Feed view -->
+        <div id="view-feed" class="view active">
+          <div id="feed" class="feed"></div>
+        </div>
+
+        <!-- Tracker view -->
+        <div id="view-tracker" class="view">
+          <div class="view-bar">
+            <span>Applications</span>
+            <button class="btn-ghost sm" id="btn-back">← Back</button>
+          </div>
+          <div id="tracker-table" class="tracker-wrap"></div>
+        </div>
+
+        <!-- Resumes view -->
+        <div id="view-resumes" class="view">
+          <div class="view-bar">
+            <span>AI Tailored Resumes</span>
+            <button class="btn-ghost sm" id="btn-back-resumes">← Back</button>
+          </div>
+          <div class="resume-layout">
+            <div class="resume-list" id="resume-list"></div>
+            <div class="resume-viewer" id="resume-viewer">
+              <div class="resume-viewer-empty">Select a resume to preview</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Command input panel ───────────────────────────── -->
+        <div class="cmd-panel" id="cmd-panel">
+
+          <!-- Suggestion pills -->
+          <div class="cmd-suggestions">
+            <span class="sug-label">Try:</span>
+            <button class="sug-pill" data-cmd="apply java full stack jobs posted last 24 hours">last 24h</button>
+            <button class="sug-pill" data-cmd="apply java full stack jobs posted last week">last week</button>
+            <button class="sug-pill" data-cmd="apply java full stack jobs on indeed posted last 24 hours">Indeed · 24h</button>
+            <button class="sug-pill" data-cmd="check gmail for recruiter emails">Gmail replies</button>
+            <button class="sug-pill" data-cmd="post to linkedin about my job search">Post update</button>
+          </div>
+
+          <!-- Mode bar -->
+          <div class="mode-bar">
+            <div class="mode-group" id="mg-perm">
+              <button class="mode-pill active" data-val="ask"  title="Show approval modal before each application">Ask</button>
+              <button class="mode-pill"        data-val="auto" title="Apply automatically without prompting">Auto</button>
+              <button class="mode-pill"        data-val="plan" title="Show plan only — no actual submissions">Plan</button>
+            </div>
+            <div class="mode-sep"></div>
+            <div class="mode-group" id="mg-effort">
+              <button class="mode-pill"        data-val="low"  title="Apply broadly (score ≥ 4/10)">Low</button>
+              <button class="mode-pill active" data-val="med"  title="Good matches (score ≥ 6/10)">Med</button>
+              <button class="mode-pill"        data-val="high" title="Top matches only (score ≥ 8/10)">High</button>
+            </div>
+            <div class="mode-sep"></div>
+            <label class="mode-toggle" id="mt-post" title="Allow agent to post updates on your LinkedIn">
+              <input type="checkbox" id="mc-post">
+              <span class="mt-label">✎ Post</span>
+            </label>
+          </div>
+
+          <!-- Input row -->
+          <div class="cmd-row">
+            <div class="cmd-wrap">
+              <span class="cmd-prompt" id="cmd-prompt">›</span>
+              <input
+                id="cmd-input"
+                class="cmd-input"
+                type="text"
+                placeholder='apply java full stack jobs posted last 24 hours on linkedin'
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </div>
+            <button class="btn-run" id="btn-run">Run ▶</button>
+            <button class="btn-ghost sm" id="btn-clear-feed">Clear</button>
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ── Settings Panel (slide-in) ──────────────────────────── -->
+  <div class="settings-overlay" id="settings-overlay" style="display:none">
+    <div class="settings-panel">
+      <div class="settings-hd">
+        <span>Settings</span>
+        <button class="settings-close" id="settings-close">✕</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title">LinkedIn</div>
+          <label class="s-field">
+            <span>Email</span>
+            <input type="email"    id="s-li-email"    placeholder="you@email.com">
+          </label>
+          <label class="s-field">
+            <span>Password</span>
+            <input type="password" id="s-li-password" placeholder="••••••••">
+          </label>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Dice</div>
+          <label class="s-field">
+            <span>Email</span>
+            <input type="email"    id="s-dice-email"    placeholder="you@email.com">
+          </label>
+          <label class="s-field">
+            <span>Password</span>
+            <input type="password" id="s-dice-password" placeholder="••••••••">
+          </label>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">AI</div>
+          <label class="s-field">
+            <span>OpenAI API Key</span>
+            <input type="password" id="s-openai-key" placeholder="sk-...">
+          </label>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Defaults</div>
+          <label class="s-field">
+            <span>Job Title</span>
+            <input type="text" id="s-query"    value="Java Full Stack Engineer">
+          </label>
+          <label class="s-field">
+            <span>Location</span>
+            <input type="text" id="s-location" value="United States">
+          </label>
+          <label class="s-field">
+            <span>Max per platform</span>
+            <input type="number" id="s-max-apps" value="30" min="1" max="200">
+          </label>
+        </div>
+      </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Resume</div>
+          <div class="resume-drop" id="resume-drop">
+            <input type="file" id="resume-file" accept=".txt,.pdf,.docx" style="display:none">
+            <div class="resume-drop-inner" id="resume-drop-inner">
+              <span class="resume-icon">📄</span>
+              <span id="resume-label">Drop resume or click to upload (.txt / .docx)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="settings-ft">
+        <button class="btn-run" id="settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Approval Modal ─────────────────────────────────────── -->
+  <div class="overlay" id="approval-modal" style="display:none">
+    <div class="dialog">
+      <div class="dialog-hd">
+        <div class="dialog-hd-left">
+          <span class="dialog-tag" id="modal-tag">Apply</span>
+          <div>
+            <div class="dialog-title" id="modal-title">Job @ Company</div>
+            <div class="dialog-sub"   id="modal-subtitle"></div>
+          </div>
+        </div>
+        <div class="dialog-hd-right">
+          <span class="dialog-score" id="modal-score"></span>
+          <span class="ats-badge" id="modal-ats-badge" style="display:none"></span>
+          <span class="dialog-timer">Auto-skip <b id="countdown">300</b>s</span>
+        </div>
+      </div>
+      <div class="dialog-body">
+        <div class="dialog-pane">
+          <div class="pane-hd">Job Description</div>
+          <pre id="modal-jd" class="pane-text"></pre>
+        </div>
+        <div class="dialog-pane">
+          <div class="pane-hd">
+            <div class="pane-tabs">
+              <button class="pane-tab active" id="tab-resume" onclick="switchModalTab('resume')">Resume</button>
+              <button class="pane-tab" id="tab-coverletter" onclick="switchModalTab('coverletter')">Cover Letter</button>
+            </div>
+            <div class="pane-actions">
+              <button class="pane-btn" id="btn-copy-resume" title="Copy to clipboard">⎘ Copy</button>
+              <button class="pane-btn" id="btn-edit-resume" title="Edit">✎ Edit</button>
+            </div>
+          </div>
+          <div id="modal-tab-resume">
+            <pre id="modal-resume" class="pane-text"></pre>
+            <textarea id="modal-resume-edit" class="pane-edit" style="display:none"></textarea>
+          </div>
+          <div id="modal-tab-coverletter" style="display:none">
+            <pre id="modal-coverletter" class="pane-text"></pre>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-ft">
+        <button class="btn-skip"    id="btn-reject">✕ Skip</button>
+        <button class="btn-approve" id="btn-approve">✓ Approve &amp; Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
