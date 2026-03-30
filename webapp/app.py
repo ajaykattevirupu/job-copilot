@@ -25,7 +25,7 @@ import uvicorn
 
 from webapp.agent_bridge import bridge
 
-app = FastAPI(title="Job Copilot")
+app = FastAPI(title="xHR")
 
 # serve static files (CSS, JS)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -490,5 +490,5 @@ def run_agent_thread(config: dict):
 # ── Run ────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("\n  Job Copilot running at http://localhost:8000\n")
+    print("\n  xHR running at http://localhost:8000\n")
     uvicorn.run("webapp.app:app", host="0.0.0.0", port=8000, reload=True)

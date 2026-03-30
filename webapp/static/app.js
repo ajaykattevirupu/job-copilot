@@ -894,7 +894,7 @@ initResumeUpload();
 if (!ls("jc_email")) {
   setTimeout(() => {
     showSettings();
-    addSysEntry("Welcome! Save your LinkedIn credentials in Settings to get started.", "info");
+    addSysEntry("Welcome to xHR! Save your LinkedIn credentials in Settings to get started.", "info");
   }, 800);
 } else {
   // Show a welcome hint
