@@ -281,39 +281,44 @@ class PortalAgent:
 
     # ── Human-assist pause ───────────────────────────────────────────────────
 
+    def _detect_captcha(self) -> bool:
+        """Return True if a CAPTCHA is visible on the current page."""
+        captcha_sels = [
+            'iframe[src*="recaptcha"]',
+            'iframe[src*="hcaptcha"]',
+            'iframe[title*="captcha" i]',
+            'div[class*="recaptcha"]',
+            'div[class*="hcaptcha"]',
+            'div[id*="captcha"]',
+            '[data-sitekey]',
+            '.cf-challenge-running',   # Cloudflare
+            '#challenge-form',         # Cloudflare
+        ]
+        for sel in captcha_sels:
+            try:
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    return True
+            except Exception:
+                pass
+        return False
+
     def _request_human_assist(self, reason: str) -> bool:
         """
-        Notify the user that the bot is stuck and wait indefinitely for them
-        to fill the form manually.  Returns True to continue, False to skip.
+        Stop automating, show the user exactly what we're stuck on, and wait
+        for them to clear the roadblock. Browser stays open throughout.
+        Returns True (resume automation) or False (skip this job).
         """
-        self._log(f"Bot stuck — {reason}", "warn")
+        self._log(f"Stuck — {reason}", "warn")
         self._save_screenshot("needs_human_assist")
 
-        job_title = self._current_job.get("title", "Application")
-
         if self.bridge:
-            self.bridge.notify(
-                "Job Copilot — Manual Input Needed",
-                f"{job_title}: {reason[:80]}"
-            )
-            return self.bridge.request_approval(
-                job={
-                    **self._current_job,
-                    "title": f"[Manual help needed] {job_title}",
-                },
-                tailored_resume=(
-                    "The bot is stuck and needs your help.\n\n"
-                    f"Reason: {reason}\n\n"
-                    "Please fill in the remaining fields manually in the browser.\n\n"
-                    "Click APPROVE when done so the bot can continue/submit,\n"
-                    "or REJECT to skip this job."
-                ),
-            )
+            return self.bridge.request_handoff(self._current_job, reason=reason)
         else:
-            print(f"\n  [Portal] Manual help needed: {reason}")
-            print("  Please fill the form manually in the browser window.")
-            return input("  Press Y when done to continue, N to skip: "
-                         ).strip().lower() == "y"
+            print(f"\n  [Portal] Stuck: {reason}")
+            print("  Please handle it in the browser window.")
+            return input("  Type 'done' when ready to continue, 'skip' to skip: "
+                         ).strip().lower() != "skip"
 
     # ── Screenshot helper ─────────────────────────────────────────────────────
 
@@ -432,6 +437,17 @@ class PortalAgent:
                 return False
 
             self._dismiss_overlays()
+
+            # ── CAPTCHA check — stop and hand off immediately ─────────────
+            if self._detect_captcha():
+                self._log("CAPTCHA detected — requesting human assist", "warn")
+                if not self._request_human_assist(
+                    "I am stuck on a CAPTCHA. Please solve it in the browser, "
+                    "then click 'Done — Continue' to resume."
+                ):
+                    return False
+                B.pause(1.5, 2.5)
+
             self._log(f"Filling form — step {step + 1}…")
 
             # ── Step 0: always attempt the fast common-field fill first ──────
@@ -491,9 +507,10 @@ class PortalAgent:
                     # Ask the user to fix it manually rather than looping forever.
                     self._log("Form not advancing — requesting human assist", "warn")
                     if not self._request_human_assist(
-                        "The form is not advancing. It may have validation errors "
-                        "or required fields the bot couldn't fill. Please correct "
-                        "them and click Next, then approve to let the bot continue."
+                        "The form is not advancing after clicking Next. "
+                        "There may be validation errors or required fields I could not fill. "
+                        "Please correct any highlighted fields and click Next yourself, "
+                        "then click 'Done — Continue' so I can take over again."
                     ):
                         return False
                     # After the user acts, give the page a moment to settle then retry
