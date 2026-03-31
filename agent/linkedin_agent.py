@@ -759,21 +759,32 @@ class LinkedInAgent:
 
         short_pause()
 
-        # ── Detect next button (give it up to 10s) ────────────────────
-        _, el = wait_for_any(self.page, [
+        # ── Detect next button (give it up to 15s, must be visible+enabled) ──
+        _nav_sels = [
             'button[aria-label="Submit application"]',
             'button[aria-label="Review your application"]',
             'button[aria-label="Continue to next step"]',
             'button[aria-label*="Submit"]',
             'button[aria-label*="Review"]',
             'button[aria-label*="Continue"]',
-            # LinkedIn sometimes uses "Next" instead of "Continue to next step"
             'button[aria-label="Next"]',
             'button[aria-label*="Next"]',
-            # Footer action buttons inside the modal
             '.jobs-easy-apply-modal footer button[type="button"]',
             '.jobs-easy-apply-modal .artdeco-button--primary',
-        ], timeout=10000)
+        ]
+        el = None
+        deadline = time.time() + 15
+        while time.time() < deadline and el is None:
+            for _sel in _nav_sels:
+                try:
+                    _btn = self.page.query_selector(_sel)
+                    if _btn and _btn.is_visible():
+                        el = _btn
+                        break
+                except Exception:
+                    pass
+            if el is None:
+                time.sleep(0.4)
 
         if el:
             label = (el.get_attribute("aria-label") or "").lower()
@@ -783,7 +794,6 @@ class LinkedInAgent:
             if "review"   in label or "review"   in text: return "review"
             if "continue" in label or "continue" in text: return "next"
             if "next"     in label or "next"     in text: return "next"
-            # Primary modal button that doesn't match above — treat as Next
             return "next"
 
         self._log("No modal nav button found — timeout", "warn")
@@ -1257,24 +1267,36 @@ class LinkedInAgent:
                         if new_tab is None:
                             pause(1.5, 2.0)
 
-                            # Check if the current page already navigated away (same-tab external)
-                            if self.page.url != pre_click_url and "linkedin.com" not in self.page.url:
-                                self._log(f"Same-tab external nav → {self.page.url[:70]}", job=job_ref)
-                                # Treat current page as the external portal
+                            # If URL changed at all, wait for the page to finish loading
+                            if self.page.url != pre_click_url:
+                                try:
+                                    wait_for_navigation(self.page)
+                                except Exception:
+                                    pass
+                                pause(1.0, 1.5)
+
+                            current_page_url = self.page.url
+
+                            # Case A: same-tab nav directly to external portal
+                            if current_page_url != pre_click_url and "linkedin.com" not in current_page_url:
+                                self._log(f"Same-tab external nav → {current_page_url[:70]}", job=job_ref)
                                 active_page = self.page
-                                # We'll handle this below — skip remaining interstitial logic
+
                             else:
-                                # Look for "Leaving LinkedIn" interstitial buttons
+                                # Case B: LinkedIn interstitial (same-tab nav to linkedin.com/job-apply/...)
+                                # OR overlay modal on the same page.
+                                # Either way — find and click the "Continue" / "Apply" button.
                                 _interstitial_found = False
                                 _cont_sels = [
                                     'button[data-tracking-control-name*="external"]',
                                     'button[data-tracking-control-name*="apply"]',
-                                    # aria-label based
                                     'button[aria-label*="Continue"]',
                                     'button[aria-label*="Apply"]',
-                                    # Generic modal action buttons
                                     '.artdeco-modal__actionbar button',
                                     '[data-test-modal-id] button',
+                                    # Interstitial page buttons (linkedin.com/job-apply/...)
+                                    'main button',
+                                    'section button',
                                 ]
                                 for _sel in _cont_sels:
                                     try:
@@ -1290,8 +1312,12 @@ class LinkedInAgent:
                                                         click_el(self.page, _btn)
                                                     new_tab = popup_info.value
                                                 except PWTimeout:
+                                                    # No popup — may have navigated same-tab
                                                     pause(3.0, 4.0)
-                                                    # Check for same-tab nav after interstitial click
+                                                    try:
+                                                        wait_for_navigation(self.page)
+                                                    except Exception:
+                                                        pass
                                                     if "linkedin.com" not in self.page.url:
                                                         active_page = self.page
                                                 _interstitial_found = True
