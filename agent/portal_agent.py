@@ -687,12 +687,13 @@ class PortalAgent:
 
         # ── Option 2: Login with stored credentials ───────────────────────
         # Try portal-specific credentials first, then fall back to personal email
-        portal_domain = self.page.url.split("/")[2] if "/" in self.page.url else ""
-        portal_creds  = self.profile.get("portals", {}).get(portal_domain, {})
-        email    = portal_creds.get("email")    or self._p("email")
-        password = portal_creds.get("password") or self.profile.get("workday", {}).get("password", "")
+        portal_domain    = self.page.url.split("/")[2] if "/" in self.page.url else ""
+        portal_creds     = self.profile.get("portals", {}).get(portal_domain, {})
+        email            = portal_creds.get("email")    or self._p("email")
+        password         = portal_creds.get("password") or self.profile.get("workday", {}).get("password", "")
+        has_credentials  = bool(email and password)
 
-        if email and password and has_email_input and has_password_input:
+        if has_credentials and has_email_input and has_password_input:
             self._log(f"Attempting login for {portal_domain or 'portal'}")
             try:
                 for sel in ['input[type="email"]', '[data-automation-id="username"]',
@@ -725,8 +726,19 @@ class PortalAgent:
             except Exception as _e:
                 self._log(f"Login attempt error: {_e}", "warn")
 
-        # ── Option 3: Create account ──────────────────────────────────────
-        # Look for a sign-up / create account link
+            # Credentials existed but login failed — don't try to create an
+            # account (user already has one). Go straight to human handoff.
+            self._log("Login failed with stored credentials — human handoff", "warn")
+            self._save_screenshot("login_failed")
+            return self._request_human_assist(
+                f"I tried logging into {portal_domain or 'the portal'} with your stored credentials "
+                "but login failed (wrong password, 2FA, or account locked). "
+                "Please sign in manually, then click 'Done — Continue'."
+            )
+
+        # ── Option 3: Create account (only if NO credentials stored) ──────
+        # If the user already has an account, we would have tried above.
+        # Only reach here when there are no stored credentials at all.
         create_sels = [
             'a:has-text("Create account")',
             'a:has-text("Sign up")',
