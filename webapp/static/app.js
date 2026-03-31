@@ -464,10 +464,51 @@ function showModal(msg) {
   const j = msg.job || {};
   set("modal-title",    `${j.title || "Job"} @ ${j.company || ""}`);
   set("modal-subtitle", j.location || "");
-  set("modal-score",    j.score ? `${j.score}/10` : "");
-  set("modal-tag",      msg.modal_type === "email" ? "Reply" : "Apply");
 
-  // ATS score badge
+  const isStuck = msg.modal_type === "stuck";
+
+  if (isStuck) {
+    // ── Stuck / human-handoff modal ───────────────────────────────
+    set("modal-tag",   "Action Needed");
+    set("modal-score", "");
+    document.getElementById("modal-ats-badge").style.display = "none";
+
+    // Replace both panes with a single instruction block
+    document.getElementById("modal-jd").textContent =
+      (msg.reason ? msg.reason + "\n\n" : "") +
+      "The bot cannot find a Next or Submit button on this screen.\n" +
+      "This may be a custom questionnaire, EEO form, or unusual layout.\n\n" +
+      "Please fill in the remaining fields manually in the browser.\n\n" +
+      "Click APPROVE when done so the bot can continue/submit,\n" +
+      "or REJECT to skip this job.";
+    document.getElementById("modal-resume").textContent  = "";
+    document.getElementById("modal-resume-edit").value   = "";
+    document.getElementById("modal-coverletter").textContent = "";
+    switchModalTab("resume");
+    _setResumeEditMode(false);
+    // Hide the resume pane entirely — user needs to look at the browser
+    document.getElementById("modal-tab-resume").style.display = "none";
+    document.querySelector(".dialog-pane:last-child").style.display = "none";
+    document.getElementById("btn-approve").textContent = "✓ Done — Continue";
+    document.getElementById("approval-modal").style.display = "flex";
+
+    secsLeft = 300; set("countdown", secsLeft); clearInterval(timer);
+    timer = setInterval(() => {
+      set("countdown", --secsLeft);
+      if (secsLeft <= 0) { clearInterval(timer); approve(false); }
+    }, 1000);
+    return;
+  }
+
+  // ── Normal apply / email modal ────────────────────────────────
+  set("modal-score", j.score ? `${j.score}/10` : "");
+  set("modal-tag",   msg.modal_type === "email" ? "Reply" : "Apply");
+  document.getElementById("btn-approve").textContent = "✓ Approve & Submit";
+
+  // Restore panes in case they were hidden by a previous stuck modal
+  document.getElementById("modal-tab-resume").style.display = "";
+  document.querySelector(".dialog-pane:last-child").style.display = "";
+
   const atsScore = msg.ats_score || 0;
   const atsBadge = document.getElementById("modal-ats-badge");
   if (atsScore > 0) {
@@ -478,11 +519,10 @@ function showModal(msg) {
     atsBadge.style.display = "none";
   }
 
-  document.getElementById("modal-jd").textContent         = j.jd    || "(No description)";
-  document.getElementById("modal-resume").textContent     = msg.resume || "";
-  document.getElementById("modal-resume-edit").value      = msg.resume || "";
+  document.getElementById("modal-jd").textContent          = j.jd    || "(No description)";
+  document.getElementById("modal-resume").textContent      = msg.resume || "";
+  document.getElementById("modal-resume-edit").value       = msg.resume || "";
   document.getElementById("modal-coverletter").textContent = msg.cover_letter || "";
-  // Reset to resume tab and edit mode
   switchModalTab("resume");
   _setResumeEditMode(false);
   document.getElementById("approval-modal").style.display = "flex";

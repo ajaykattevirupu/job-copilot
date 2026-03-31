@@ -876,6 +876,32 @@ class LinkedInAgent:
                     break  # No continue button found — stuck, bail out
 
             else:
+                # Bot couldn't find a nav button — ask user to fill manually
+                if self.bridge:
+                    self._log("Stuck — asking human to complete form", "warn")
+                    human_done = self.bridge.request_handoff(
+                        self._current_job,
+                        reason="Could not find Next/Submit button on current step.",
+                    )
+                    if human_done:
+                        # User filled the form — try one more time to click Next/Submit
+                        for _sel in [
+                            'button[aria-label="Submit application"]',
+                            'button[aria-label*="Submit"]',
+                            'button[aria-label="Continue to next step"]',
+                            'button[aria-label*="Continue"]',
+                            'button[aria-label*="Next"]',
+                            '.jobs-easy-apply-modal .artdeco-button--primary',
+                        ]:
+                            try:
+                                _b = self.page.query_selector(_sel)
+                                if _b and _b.is_visible():
+                                    click_el(self.page, _b)
+                                    pause(1.5, 2.0)
+                                    break
+                            except Exception:
+                                pass
+                        continue  # go around the loop and try _fill_page again
                 break
 
         return False

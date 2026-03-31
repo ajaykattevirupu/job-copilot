@@ -125,6 +125,42 @@ class AgentBridge:
 
     # ── Approval flow ──────────────────────────────────────────────────────
 
+    def request_handoff(self, job: dict, reason: str = "") -> bool:
+        """
+        Called when the bot is stuck mid-form and needs the human to take over.
+        Shows a 'stuck' modal — no resume preview, just instructions.
+        Returns True if the user clicked Approve (done), False to skip the job.
+        """
+        if self.permission == "plan":
+            return False
+
+        self._approval_event.clear()
+        self._approval_result = False
+        self.stats["pending"] = 1
+        self.update_stats()
+
+        self._send({
+            "type":       "approval_required",
+            "modal_type": "stuck",
+            "job":        job,
+            "reason":     reason,
+            "resume":     "",
+            "cover_letter": "",
+            "ats_score":  0,
+            "time":       datetime.now().strftime("%H:%M:%S"),
+        })
+
+        self.log(f"Bot stuck — awaiting human help: {reason}", level="warn", job=job)
+        self.notify(
+            title="xHR — Needs Your Help",
+            message=f"{job.get('title','Job')} @ {job.get('company','')} — fill form manually",
+        )
+
+        self._approval_event.wait(timeout=300)  # 5 min for human to fill the form
+        self.stats["pending"] = 0
+        self.update_stats()
+        return self._approval_result
+
     def request_approval(self, job: dict, tailored_resume: str,
                          modal_type: str = "apply",
                          cover_letter: str = "", ats_score: int = 0) -> bool:
