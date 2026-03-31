@@ -1312,12 +1312,17 @@ class LinkedInAgent:
                                                         click_el(self.page, _btn)
                                                     new_tab = popup_info.value
                                                 except PWTimeout:
-                                                    # No popup — may have navigated same-tab
-                                                    pause(3.0, 4.0)
+                                                    # No popup — poll up to 20s for same-tab nav away from LinkedIn
+                                                    for _w in range(40):
+                                                        if "linkedin.com" not in self.page.url:
+                                                            break
+                                                        time.sleep(0.5)
                                                     try:
                                                         wait_for_navigation(self.page)
                                                     except Exception:
                                                         pass
+                                                    pause(1.5, 2.0)
+                                                    self._log(f"After interstitial click → {self.page.url[:80]}", job=job_ref)
                                                     if "linkedin.com" not in self.page.url:
                                                         active_page = self.page
                                                 _interstitial_found = True
