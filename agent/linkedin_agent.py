@@ -1202,6 +1202,36 @@ class LinkedInAgent:
                         # (handle_easy_apply uses docx for upload; pdf stays None)
 
 
+                        # ── Verify the panel still shows the same job ──────────
+                        # Tailoring takes 15-30s (3 OpenAI calls). LinkedIn may
+                        # have re-rendered the panel to a different job by now.
+                        _verify = self.get_job_details()
+                        if (_verify["title"]   != title   or
+                                _verify["company"] != company):
+                            self._log(
+                                f"Job panel switched during tailoring "
+                                f"(expected '{title} @ {company}', "
+                                f"now '{_verify['title']} @ {_verify['company']}') "
+                                f"— re-clicking card",
+                                "warn", job_ref,
+                            )
+                            # Re-click the original card to restore the panel
+                            try:
+                                self._scroll_to_card(card)
+                                click_el(self.page, card)
+                                pause(2.0, 3.0)
+                                _verify2 = self.get_job_details()
+                                if (_verify2["title"]   != title or
+                                        _verify2["company"] != company):
+                                    self._log(
+                                        "Card no longer loads correct job — skipping",
+                                        "skip", job_ref,
+                                    )
+                                    continue
+                            except Exception:
+                                self._log("Could not re-click card — skipping", "skip", job_ref)
+                                continue
+
                         # LinkedIn has two apply button types:
                         #   Easy Apply  → button, opens modal on same page
                         #   Apply ↗     → button or <a>, opens new tab (external ATS)

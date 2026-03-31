@@ -638,6 +638,151 @@ class PortalAgent:
         """Workday 'How would you like to apply?' — delegates to generic handler."""
         return self._handle_autofill_prompt()
 
+    def _handle_login_or_create_account(self) -> bool:
+        """
+        Generic handler for any portal login/register wall.
+        Priority:
+          1. Guest / Apply Manually (no account needed)
+          2. Login with stored credentials
+          3. Create account with profile info
+          4. Human handoff
+        Returns True if we got past the wall.
+        """
+        # ── Detect login/signup wall ──────────────────────────────────────
+        url = self.page.url.lower()
+        has_email_input    = self.page.query_selector('input[type="email"], input[name*="email"], input[id*="email"]') is not None
+        has_password_input = self.page.query_selector('input[type="password"]') is not None
+        is_wall = (
+            any(kw in url for kw in ("/signin", "/login", "/sign-in", "/register", "/signup", "/sign-up", "/create-account")) or
+            has_email_input or has_password_input
+        )
+        if not is_wall:
+            return True
+
+        self._log("Login/register wall detected — evaluating options", "warn")
+
+        # ── Option 1: Guest / skip sign-in ────────────────────────────────
+        guest_sels = [
+            'button:has-text("Apply Manually")',
+            'a:has-text("Apply Manually")',
+            'button:has-text("Continue as guest")',
+            'button:has-text("Continue as a guest")',
+            'button:has-text("Skip sign in")',
+            'button:has-text("Skip")',
+            'a:has-text("Continue as guest")',
+            '[data-automation-id="skipLogin"]',
+            '[data-automation-id="applyManually"]',
+        ]
+        for sel in guest_sels:
+            try:
+                btn = self.page.query_selector(sel)
+                if btn and btn.is_visible():
+                    self._log(f"Guest path found — clicking '{(btn.inner_text() or '').strip()}'")
+                    B.click_el(self.page, btn)
+                    B.wait_for_navigation(self.page)
+                    B.pause(1.5, 2.5)
+                    return True
+            except Exception:
+                continue
+
+        # ── Option 2: Login with stored credentials ───────────────────────
+        # Try portal-specific credentials first, then fall back to personal email
+        portal_domain = self.page.url.split("/")[2] if "/" in self.page.url else ""
+        portal_creds  = self.profile.get("portals", {}).get(portal_domain, {})
+        email    = portal_creds.get("email")    or self._p("email")
+        password = portal_creds.get("password") or self.profile.get("workday", {}).get("password", "")
+
+        if email and password and has_email_input and has_password_input:
+            self._log(f"Attempting login for {portal_domain or 'portal'}")
+            try:
+                for sel in ['input[type="email"]', '[data-automation-id="username"]',
+                            'input[name*="email"]', 'input[id*="email"]']:
+                    el = self.page.query_selector(sel)
+                    if el and el.is_visible():
+                        B.type_into(el, email)
+                        break
+                for sel in ['input[type="password"]', '[data-automation-id="password"]']:
+                    el = self.page.query_selector(sel)
+                    if el and el.is_visible():
+                        B.type_into(el, password)
+                        break
+                for sel in ['button[type="submit"]', 'input[type="submit"]',
+                            '[data-automation-id="signIn"]',
+                            'button:has-text("Sign in")', 'button:has-text("Log in")',
+                            'button:has-text("Login")', 'button:has-text("Sign In")']:
+                    btn = self.page.query_selector(sel)
+                    if btn and btn.is_visible():
+                        B.click_el(self.page, btn)
+                        B.wait_for_navigation(self.page)
+                        B.pause(2, 3)
+                        break
+                # Check if login succeeded (no longer on login page)
+                new_url = self.page.url.lower()
+                if not any(kw in new_url for kw in ("/signin", "/login", "/sign-in")):
+                    self._log("Login successful")
+                    return True
+                self._log("Login failed (still on login page)", "warn")
+            except Exception as _e:
+                self._log(f"Login attempt error: {_e}", "warn")
+
+        # ── Option 3: Create account ──────────────────────────────────────
+        # Look for a sign-up / create account link
+        create_sels = [
+            'a:has-text("Create account")',
+            'a:has-text("Sign up")',
+            'a:has-text("Register")',
+            'button:has-text("Create account")',
+            'button:has-text("Sign up")',
+            '[data-automation-id="createAccountLink"]',
+        ]
+        for sel in create_sels:
+            try:
+                btn = self.page.query_selector(sel)
+                if btn and btn.is_visible():
+                    self._log(f"Creating new account — clicking '{(btn.inner_text() or '').strip()}'")
+                    B.click_el(self.page, btn)
+                    B.wait_for_navigation(self.page)
+                    B.pause(1.5, 2.5)
+                    # Fill registration form
+                    for sel2, val in [
+                        ('input[name*="firstName"], input[id*="firstName"]', self._first()),
+                        ('input[name*="lastName"],  input[id*="lastName"]',  self._last()),
+                        ('input[type="email"],      input[name*="email"]',   email or self._p("email")),
+                        ('input[type="password"]',                           password or "Xhr@2024!"),
+                        ('input[name*="phone"], input[type="tel"]',          self._p("phone")),
+                    ]:
+                        if val:
+                            try:
+                                el = self.page.query_selector(sel2)
+                                if el and el.is_visible():
+                                    B.type_into(el, val)
+                            except Exception:
+                                pass
+                    # Submit registration
+                    for sub_sel in ['button[type="submit"]', 'button:has-text("Create account")',
+                                    'button:has-text("Sign up")', 'button:has-text("Register")']:
+                        sub = self.page.query_selector(sub_sel)
+                        if sub and sub.is_visible():
+                            B.click_el(self.page, sub)
+                            B.wait_for_navigation(self.page)
+                            B.pause(2, 3)
+                            break
+                    new_url = self.page.url.lower()
+                    if not any(kw in new_url for kw in ("/register", "/signup", "/sign-up", "/create-account")):
+                        self._log("Account created successfully")
+                        return True
+                    break
+            except Exception:
+                continue
+
+        # ── Option 4: Human handoff ───────────────────────────────────────
+        self._log("Cannot handle login/signup wall automatically — human handoff", "warn")
+        self._save_screenshot("login_wall")
+        return self._request_human_assist(
+            f"I am stuck on a login or account creation page at {self.page.url[:80]}. "
+            "Please sign in or create an account manually, then click 'Done — Continue'."
+        )
+
     def _workday_handle_login_wall(self) -> bool:
         """
         Detect and bypass the Workday sign-in / create-account wall.
@@ -675,53 +820,18 @@ class PortalAgent:
             except Exception:
                 continue
 
-        # Try filling credentials if stored in profile
-        wd_email    = self.profile.get("workday", {}).get("email",    self._p("email"))
-        wd_password = self.profile.get("workday", {}).get("password", "")
-        if wd_email and wd_password:
-            self._log("Filling Workday credentials from profile")
-            for sel in ['[data-automation-id="username"]', 'input[type="email"]']:
-                try:
-                    el = self.page.query_selector(sel)
-                    if el and el.is_visible():
-                        B.type_into(el, wd_email)
-                        break
-                except Exception:
-                    pass
-            for sel in ['[data-automation-id="password"]', 'input[type="password"]']:
-                try:
-                    el = self.page.query_selector(sel)
-                    if el and el.is_visible():
-                        B.type_into(el, wd_password)
-                        break
-                except Exception:
-                    pass
-            for sel in ['[data-automation-id="signIn"]', 'button:has-text("Sign In")', 'button[type="submit"]']:
-                try:
-                    btn = self.page.query_selector(sel)
-                    if btn and btn.is_visible():
-                        B.click_el(self.page, btn)
-                        B.wait_for_navigation(self.page)
-                        B.pause(2, 3)
-                        return "/signin" not in self.page.url.lower()
-                except Exception:
-                    pass
-
-        # Cannot bypass — notify user and save screenshot
-        self._log("Cannot bypass Workday login wall — manual login required", "warn")
-        self._save_screenshot("workday_login_wall")
-        if self.bridge:
-            self.bridge.notify(
-                "Job Copilot — Manual Login Needed",
-                f"Workday login wall at {self.page.url[:60]}"
-            )
-        return False
+        # Delegate to the generic login/account handler
+        return self._handle_login_or_create_account()
 
     # ── Portal-specific entry points ───────────────────────────────────────────
 
     def _handle_greenhouse(self, jd: str) -> bool:
         self._log("Filling Greenhouse form…")
         B.pause()
+        self._dismiss_overlays()
+        self._handle_autofill_prompt()
+        if not self._handle_login_or_create_account():
+            return False
         self._upload_resume(prefer_docx=True)
         self._fill_standard()
         # Greenhouse-specific IDs
@@ -739,6 +849,10 @@ class PortalAgent:
     def _handle_lever(self, jd: str) -> bool:
         self._log("Filling Lever form…")
         B.pause()
+        self._dismiss_overlays()
+        self._handle_autofill_prompt()
+        if not self._handle_login_or_create_account():
+            return False
         self._upload_resume(prefer_docx=True)
         for sel, val in [
             ('input[name="name"]',             self._p("name")),
@@ -784,6 +898,8 @@ class PortalAgent:
         self._dismiss_overlays()
         self._handle_autofill_prompt()
         self._dismiss_overlays()
+        if not self._handle_login_or_create_account():
+            return False
         self._upload_resume(prefer_docx=True)
         self._fill_standard()
         self._fill_page_inputs(jd)
@@ -795,6 +911,8 @@ class PortalAgent:
         self._dismiss_overlays()
         self._handle_autofill_prompt()
         self._dismiss_overlays()
+        if not self._handle_login_or_create_account():
+            return False
         self._upload_resume(prefer_docx=True)
         self._fill_standard()
         self._fill_page_inputs(jd)
