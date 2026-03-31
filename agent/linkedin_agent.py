@@ -1305,95 +1305,90 @@ class LinkedInAgent:
                             )
                             continue
 
-                        # ── Step 1: Click Apply — capture new tab immediately ──
-                        new_tab   = None
-                        active_page = None          # set in steps 2/3 below
-                        pre_click_url = self.page.url
-                        try:
-                            with self.page.expect_popup(timeout=6000) as popup_info:
-                                click_el(self.page, apply_btn)
-                            new_tab = popup_info.value
-                        except PWTimeout:
-                            pass  # No popup — Easy Apply modal OR same-tab nav
+                        # ── Steps 1+2: Click Apply, then watch for new tab OR
+                        #   same-tab nav simultaneously (25s window).
+                        #
+                        # Why not expect_popup(): it BLOCKS for the full timeout
+                        # and we can't detect same-tab navigation while waiting.
+                        # Instead we snapshot pages before click, then poll both.
+                        new_tab     = None
+                        active_page = None
+                        pre_click_url   = self.page.url
+                        pre_click_pages = set(id(p) for p in self.ctx.pages)
 
-                        # ── Step 2: Check CURRENT PAGE for modal interstitial ──
-                        # LinkedIn sometimes shows "You are leaving LinkedIn" as an
-                        # overlay. Note: :has-text() is NOT supported by query_selector
-                        # in modern Playwright — use aria-label / data-* selectors only.
-                        if new_tab is None:
-                            pause(1.5, 2.0)
+                        click_el(self.page, apply_btn)
 
-                            # If URL changed at all, wait for the page to finish loading
+                        # Poll 25s — whichever fires first: new tab or URL change
+                        _poll_deadline = time.time() + 25
+                        while time.time() < _poll_deadline:
+                            # Check for new tab
+                            for _p in self.ctx.pages:
+                                if id(_p) not in pre_click_pages and not _p.is_closed():
+                                    new_tab = _p
+                                    break
+                            if new_tab:
+                                break
+                            # Check for same-tab navigation
                             if self.page.url != pre_click_url:
+                                break
+                            time.sleep(0.3)
+
+                        # Allow page/tab to finish loading
+                        pause(1.5, 2.0)
+
+                        if new_tab is None and self.page.url == pre_click_url:
+                            # Nothing happened yet — look for interstitial overlay/page
+                            # and click Continue/Apply
+                            _cont_sels = [
+                                'button[data-tracking-control-name*="external"]',
+                                'button[data-tracking-control-name*="apply"]',
+                                'button[aria-label*="Continue"]',
+                                'button[aria-label*="Apply"]',
+                                '.artdeco-modal__actionbar button',
+                                '[data-test-modal-id] button',
+                                'main button',
+                                'section button',
+                            ]
+                            for _sel in _cont_sels:
                                 try:
-                                    wait_for_navigation(self.page)
-                                except Exception:
-                                    pass
-                                pause(1.0, 1.5)
-
-                            current_page_url = self.page.url
-
-                            # Case A: same-tab nav directly to external portal
-                            if current_page_url != pre_click_url and "linkedin.com" not in current_page_url:
-                                self._log(f"Same-tab external nav → {current_page_url[:70]}", job=job_ref)
-                                active_page = self.page
-
-                            else:
-                                # Case B: LinkedIn interstitial (same-tab nav to linkedin.com/job-apply/...)
-                                # OR overlay modal on the same page.
-                                # Either way — find and click the "Continue" / "Apply" button.
-                                _interstitial_found = False
-                                _cont_sels = [
-                                    'button[data-tracking-control-name*="external"]',
-                                    'button[data-tracking-control-name*="apply"]',
-                                    'button[aria-label*="Continue"]',
-                                    'button[aria-label*="Apply"]',
-                                    '.artdeco-modal__actionbar button',
-                                    '[data-test-modal-id] button',
-                                    # Interstitial page buttons (linkedin.com/job-apply/...)
-                                    'main button',
-                                    'section button',
-                                ]
-                                for _sel in _cont_sels:
-                                    try:
-                                        _btns = self.page.query_selector_all(_sel)
-                                        for _btn in _btns:
-                                            _btn_text = (_btn.inner_text() or "").lower().strip()
-                                            if not _btn.is_visible():
-                                                continue
-                                            if any(w in _btn_text for w in ("continue", "apply", "proceed")):
-                                                self._log(f"Interstitial — clicking '{_btn_text}'", job=job_ref)
-                                                try:
-                                                    with self.page.expect_popup(timeout=12000) as popup_info:
-                                                        click_el(self.page, _btn)
-                                                    new_tab = popup_info.value
-                                                except PWTimeout:
-                                                    # No popup — poll up to 20s for same-tab nav away from LinkedIn
-                                                    for _w in range(40):
-                                                        if "linkedin.com" not in self.page.url:
-                                                            break
-                                                        time.sleep(0.5)
-                                                    try:
-                                                        wait_for_navigation(self.page)
-                                                    except Exception:
-                                                        pass
-                                                    pause(1.5, 2.0)
-                                                    self._log(f"After interstitial click → {self.page.url[:80]}", job=job_ref)
-                                                    if "linkedin.com" not in self.page.url:
-                                                        active_page = self.page
-                                                _interstitial_found = True
-                                                break
-                                        if _interstitial_found:
+                                    for _btn in (self.page.query_selector_all(_sel) or []):
+                                        _btn_text = (_btn.inner_text() or "").lower().strip()
+                                        if not _btn.is_visible():
+                                            continue
+                                        if any(w in _btn_text for w in ("continue", "apply", "proceed")):
+                                            self._log(f"Interstitial — clicking '{_btn_text}'", job=job_ref)
+                                            _pre2      = self.page.url
+                                            _pre2_pages = set(id(p) for p in self.ctx.pages)
+                                            click_el(self.page, _btn)
+                                            # Poll 25s for new tab or URL change
+                                            _d2 = time.time() + 25
+                                            while time.time() < _d2:
+                                                for _p2 in self.ctx.pages:
+                                                    if id(_p2) not in _pre2_pages and not _p2.is_closed():
+                                                        new_tab = _p2
+                                                        break
+                                                if new_tab or self.page.url != _pre2:
+                                                    break
+                                                time.sleep(0.3)
+                                            pause(1.5, 2.0)
+                                            self._log(f"After interstitial click → {self.page.url[:80]}", job=job_ref)
                                             break
-                                    except Exception:
-                                        continue
+                                except Exception:
+                                    continue
+                                if new_tab or self.page.url != pre_click_url:
+                                    break
 
-                        # ── Step 3: Handle interstitial INSIDE the new tab ─────
-                        # LinkedIn opens a new tab at linkedin.com/jobs/view/externalApply/...
-                        # That page shows "You are leaving LinkedIn" — need to click Continue there.
-                        # active_page may already be set to self.page if same-tab nav detected in Step 2
+                        # ── Step 3: Resolve active_page ───────────────────────
+                        # active_page is the page we'll hand off to PortalAgent.
+                        # Priority: new tab > same-tab external nav > current page
                         if active_page is None:
-                            active_page = self.page
+                            if new_tab:
+                                pass  # handled below
+                            elif "linkedin.com" not in self.page.url:
+                                active_page = self.page
+                                self._log(f"Same-tab external → {self.page.url[:70]}", job=job_ref)
+                            else:
+                                active_page = self.page  # fallback (Easy Apply or unresolved)
                         if new_tab:
                             new_tab.bring_to_front()
                             pause(2.0, 3.0)  # Let the new tab load
