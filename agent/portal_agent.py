@@ -541,11 +541,62 @@ class PortalAgent:
                 continue
         return False
 
-    def _workday_handle_how_to_apply(self) -> bool:
+    def _handle_autofill_prompt(self) -> bool:
         """
-        Handle the 'How would you like to apply?' screen.
-        Prefers 'Apply Manually' to avoid requiring a Workday account.
+        Generic handler for 'How would you like to apply?' screens.
+        ALWAYS prefers 'Autofill with Resume' — uploads resume and waits for
+        the ATS to parse it and pre-fill fields. Falls back to 'Apply Manually'
+        only if no autofill option is present.
+
+        Works on Workday, generic ATS portals, and any page that offers these
+        choices before the application form.
         """
+        # ── Priority 1: Autofill with Resume ─────────────────────────────
+        autofill_sels = [
+            # Workday-specific automation IDs
+            '[data-automation-id="autofillWithResume"]',
+            # Text-based — match buttons/links containing any of these phrases
+            'button:has-text("Autofill with Resume")',
+            'button:has-text("Autofill with resume")',
+            'button:has-text("Use My Resume")',
+            'button:has-text("Upload Resume")',
+            'button:has-text("Upload my resume")',
+            'a:has-text("Autofill with Resume")',
+            'a:has-text("Autofill with resume")',
+            'a:has-text("Use My Resume")',
+            'a:has-text("Upload Resume")',
+        ]
+        for sel in autofill_sels:
+            try:
+                btn = self.page.query_selector(sel)
+                if btn and btn.is_visible():
+                    self._log("Choosing 'Autofill with Resume' on intro screen")
+                    B.click_el(self.page, btn)
+                    B.pause(1.5, 2.0)
+                    # After click, an <input type="file"> may appear — upload immediately
+                    upload_file = self.resume_docx or self.resume_pdf
+                    if upload_file:
+                        deadline = time.time() + 8
+                        while time.time() < deadline:
+                            fi = self.page.query_selector('input[type="file"]')
+                            if fi:
+                                try:
+                                    fi.set_input_files(upload_file)
+                                    self._log(f"Resume uploaded for autofill: {os.path.basename(upload_file)}")
+                                    self._resume_uploaded = True
+                                except Exception:
+                                    pass
+                                break
+                            time.sleep(0.4)
+                    # Wait for the ATS to parse the resume and autofill fields
+                    B.pause(3, 5)
+                    B.wait_for_navigation(self.page)
+                    B.pause(1.5, 2.5)
+                    return True
+            except Exception:
+                continue
+
+        # ── Priority 2: Apply Manually (fallback) ─────────────────────────
         manual_sels = [
             '[data-automation-id="applyManually"]',
             'button:has-text("Apply Manually")',
@@ -556,7 +607,7 @@ class PortalAgent:
             try:
                 btn = self.page.query_selector(sel)
                 if btn and btn.is_visible():
-                    self._log("Choosing 'Apply Manually' on intro screen")
+                    self._log("Choosing 'Apply Manually' on intro screen (no autofill option found)")
                     B.click_el(self.page, btn)
                     B.wait_for_navigation(self.page)
                     B.pause(1.5, 2.5)
@@ -564,24 +615,11 @@ class PortalAgent:
             except Exception:
                 continue
 
-        # Fall back: try "Autofill with Resume" if available
-        for sel in [
-            '[data-automation-id="autofillWithResume"]',
-            'button:has-text("Autofill with Resume")',
-            'button:has-text("Upload my resume")',
-        ]:
-            try:
-                btn = self.page.query_selector(sel)
-                if btn and btn.is_visible():
-                    self._log("Choosing 'Autofill with Resume' on intro screen")
-                    B.click_el(self.page, btn)
-                    B.wait_for_navigation(self.page)
-                    B.pause(2, 3)
-                    return True
-            except Exception:
-                continue
-
         return False
+
+    def _workday_handle_how_to_apply(self) -> bool:
+        """Workday 'How would you like to apply?' — delegates to generic handler."""
+        return self._handle_autofill_prompt()
 
     def _workday_handle_login_wall(self) -> bool:
         """
@@ -726,6 +764,9 @@ class PortalAgent:
     def _handle_icims(self, jd: str) -> bool:
         self._log("Filling iCIMS form…")
         B.pause()
+        self._dismiss_overlays()
+        self._handle_autofill_prompt()
+        self._dismiss_overlays()
         self._upload_resume(prefer_docx=True)
         self._fill_standard()
         self._fill_page_inputs(jd)
@@ -734,6 +775,9 @@ class PortalAgent:
     def _handle_generic(self, jd: str) -> bool:
         self._log("Filling form (generic portal)…")
         B.pause()
+        self._dismiss_overlays()
+        self._handle_autofill_prompt()
+        self._dismiss_overlays()
         self._upload_resume(prefer_docx=True)
         self._fill_standard()
         self._fill_page_inputs(jd)
